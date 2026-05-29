@@ -669,6 +669,16 @@ function creditCard(c){
     const txt=days<0?`Venció hace ${Math.abs(days)}d`:days===0?'Vence hoy':`${days}d`;
     dLabel=`<span style="color:${col};font-size:11px;margin-left:6px;">${txt}</span>`;
   }
+  let historyHTML = '';
+  if (c.pagos && c.pagos.length > 0) {
+     historyHTML = '<div style="margin-top:15px; font-size:12px; border-top:1px solid #333; padding-top:10px;">' +
+       '<div style="color:#888; margin-bottom:8px;">Historial de abonos:</div>' +
+       c.pagos.map(p => '<div style="display:flex; justify-content:space-between; margin-bottom:4px; padding:4px 8px; background:rgba(255,255,255,0.03); border-radius:4px;">' +
+          '<span>📅 ' + p.fecha + '</span>' +
+          '<span style="color:#4caf50; font-weight:bold;">+ S/ ' + parseFloat(p.monto).toFixed(2) + '</span>' +
+       '</div>').join('') +
+     '</div>';
+  }
   return `<div class="card">
     <div class="card-header">
       <div><div class="card-title">${c.proyecto}</div><div class="card-sub">${c.acreedor} · ${c.tipo}</div></div>
@@ -687,7 +697,9 @@ function creditCard(c){
       <div class="prog-bar"><div class="prog-fill" style="width:${p}%;background:${pCol(p)};"></div></div>
     </div>
     ${c.notas?`<div style="font-size:12px;color:var(--text-secondary);margin-top:8px;padding-top:8px;border-top:0.5px solid var(--border-light);">${c.notas}</div>`:''}
+    ${historyHTML}
     <div class="action-row" style="margin-top:10px;">
+      <button class="action-btn" onclick="addAbono(${c.id})"><i class="ti ti-coin"></i> Abonar</button>
       <button class="action-btn" onclick="markPaid(${c.id})"><i class="ti ti-check"></i> Pagado</button>
       <button class="action-btn" onclick="cycleStatus(${c.id})"><i class="ti ti-refresh"></i> Estado</button>
       <button class="action-btn" onclick="addToCalendar(${c.id})"><i class="ti ti-calendar"></i> Agendar</button>
@@ -847,11 +859,52 @@ function deleteAcreedor(name){
   renderGestionar();renderSidebar();
 }
 
-function markPaid(id){const c=credits.find(x=>x.id===id);if(c){c.estado='Pagado';c.pagado=c.monto;}refresh();}
+  function markPaid(id){
+  const c = credits.find(x => x.id == id);
+  if(c){ c.estado = 'Pagado'; c.pagado = c.monto; }
+  refresh();
+}
+
 function cycleStatus(id){
-  const c=credits.find(x=>x.id===id);if(!c)return;
-  const s=['Activo','Pendiente','Pagado','Vencido'];
-  c.estado=s[(s.indexOf(c.estado)+1)%s.length];
+  const c = credits.find(x => x.id == id);
+  if(!c) return;
+  const s = ['Activo','Pendiente','Pagado','Vencido'];
+  c.estado = s[(s.indexOf(c.estado)+1) % s.length];
+
+  // SOLUCIÓN AL BUG: Si quitamos el estado 'Pagado', recupera el monto real sumando el historial
+  if (c.estado !== 'Pagado') {
+    c.pagado = (c.pagos && c.pagos.length > 0) ? c.pagos.reduce((sum, p) => sum + parseFloat(p.monto), 0) : 0;
+  }
+  refresh();
+}
+
+// NUEVA FUNCIÓN: Ventana para ingresar abonos/amortizaciones
+function addAbono(id) {
+  const c = credits.find(x => x.id == id);
+  if(!c) return;
+  const pendiente = c.monto - (c.pagado || 0);
+  if (pendiente <= 0) { alert('Este crédito ya está cancelado por completo.'); return; }
+
+  const abono = prompt(`Monto pendiente: S/ ${pendiente.toFixed(2)}\n\n¿Cuánto dinero desea abonar ahora?`);
+  if (abono === null || abono.trim() === '') return; // Si presiona "Cancelar"
+  const montoAbono = parseFloat(abono);
+
+  if (isNaN(montoAbono) || montoAbono <= 0) {
+    alert('Por favor, ingrese un número válido mayor a 0.'); return;
+  }
+  if (montoAbono > pendiente) {
+    alert(`El abono no puede ser mayor a la deuda (S/ ${pendiente.toFixed(2)}).`); return;
+  }
+
+  // 1. Crear el registro en el historial
+  if (!c.pagos) c.pagos = [];
+  const hoy = new Date().toLocaleDateString('es-PE'); // Formato de fecha local
+  c.pagos.push({ fecha: hoy, monto: montoAbono });
+
+  // 2. Actualizar barra de progreso y auto-completar si se pagó todo
+  c.pagado = (c.pagado || 0) + montoAbono;
+  if (c.pagado >= c.monto) c.estado = 'Pagado';
+
   refresh();
 }
 function deleteCredit(id){credits=credits.filter(x=>x.id!==id);refresh();}
