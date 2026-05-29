@@ -963,14 +963,33 @@ function addCredit(){
   renderSidebar();showAcreedor(acreedor);
 }
 
-function resetData(){
-  if(!confirm('¿Restablecer todos los datos al ejemplo inicial? Se perderán todos los datos guardados en la nube.'))return;
-  acreedores=JSON.parse(JSON.stringify(DEFAULT_ACREEDORES));
-  credits=JSON.parse(JSON.stringify(DEFAULT_CREDITS));
-  nextId=7;
-  currentAcreedor=null;
+function resetData() {
+  // 1. Primera capa: Confirmación visual
+  const confirmar = confirm("⚠️ ¡ALERTA CRÍTICA! Está a punto de borrar absolutamente TODOS los créditos y acreedores de la empresa. Esto limpiará tu base de datos en Firebase y NO se puede deshacer. ¿Realmente desea continuar?");
+  if (!confirmar) return;
+
+  // 2. Segunda capa: Solicitud de contraseña
+  const password = prompt("🔐 Ingrese la contraseña de administrador para autorizar el borrado total:");
+  
+  // Puedes cambiar 'Track2026' por la palabra o clave que tú quieras entre las comillas
+  if (password !== 'Track2026') {
+    alert("❌ Contraseña incorrecta. El restablecimiento de datos ha sido cancelado.");
+    return;
+  }
+
+  // 3. Si la clave es correcta, se ejecuta el borrado oficial:
+  credits = [];
+  acreedores = [];
+  
+  // Limpia Firebase y la pantalla
+  if (typeof database !== 'undefined' && typeof firebaseProject !== 'undefined') {
+    // Si tienes una función específica para limpiar Firebase en tu código se ejecuta aquí
+    firebase.database().ref(firebaseProject).remove(); 
+  }
+  
   saveData();
-  showOverview();
+  alert("✅ Todos los datos han sido eliminados con éxito. La plataforma se reiniciará.");
+  window.location.reload();
 }
 
 // Arranque
