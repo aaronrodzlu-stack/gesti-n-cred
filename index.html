@@ -785,32 +785,143 @@ function renderOverview(){
 }
 
 // ---- REMINDERS ----
-function renderReminders(){
-  const urgent=[];
-  credits.forEach(c=>{
-    if(c.estado==='Pagado')return;
-    const v=venc(c);if(!v)return;
-    const d=daysUntil(v.toISOString().slice(0,10));
-    if(d<=parseInt(c.alerta))urgent.push({c,d,v});
-  });
-  urgent.sort((a,b)=>a.d-b.d);
-  const el=document.getElementById('reminders-content');
-  if(!urgent.length){el.innerHTML='<div class="empty"><i class="ti ti-circle-check" style="font-size:28px;display:block;margin-bottom:8px;color:var(--success-fg);"></i>Sin recordatorios activos. Todo en orden.</div>';return;}
-  el.innerHTML=`<div style="font-size:13px;font-weight:600;margin-bottom:12px;">${urgent.length} crédito${urgent.length!==1?'s':''} requiere${urgent.length!==1?'n':''} atención</div>`
-    +urgent.map(({c,d,v})=>{
-      const urg=d<0||d<=7;
-      const ibg=urg?'var(--danger-bg)':d<=15?'var(--warn-bg)':'var(--success-bg)';
-      const ifg=urg?'var(--danger-fg)':d<=15?'var(--warn-fg)':'var(--success-fg)';
-      const ico=d<0?'ti-alert-circle':d<=15?'ti-alarm':'ti-clock';
-      const msg=d<0?`Venció hace ${Math.abs(d)} días`:d===0?'Vence hoy':`Vence en ${d} días`;
-      return `<div class="reminder-item">
-        <div class="reminder-icon" style="background:${ibg};color:${ifg};"><i class="ti ${ico}"></i></div>
-        <div style="flex:1;"><div style="font-size:13px;font-weight:500;">${c.proyecto}</div><div style="font-size:12px;color:var(--text-secondary);">${c.acreedor} · ${fmt(c.monto-c.pagado)} pendiente</div><div style="font-size:11px;color:var(--text-tertiary);margin-top:2px;">${msg} · ${fmtDate(v)}</div></div>
-        <span class="badge ${sClass(c.estado)}">${c.estado}</span>
-      </div>`;
-    }).join('');
+// 📅 MOTOR DEL CALENDARIO INTERACTIVO Y RECORDATORIOS
+function renderReminders() {
+  const container = document.getElementById('section-reminders');
+  if (!container) return;
+
+  // Inicializar la fecha del calendario si no existe
+  if (!window.currentCalDate) window.currentCalDate = new Date();
+  const year = window.currentCalDate.getFullYear();
+  const month = window.currentCalDate.getMonth();
+
+  const monthNames = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
+  
+  // Encabezado con controles para cambiar de mes
+  let html = `
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; flex-wrap:wrap; gap:10px;">
+      <h2>📅 Calendario de Vencimientos</h2>
+      <div style="display:flex; gap:8px; background:#1e1e1e; padding:4px; border-radius:6px; border:1px solid #333;">
+        <button class="action-btn" style="padding:6px 12px;" onclick="changeMonth(-1)"><i class="ti ti-chevron-left"></i> Ant.</button>
+        <span style="font-size:15px; font-weight:bold; min-width:130px; text-align:center; align-self:center; color:#fff;">${monthNames[month]} ${year}</span>
+        <button class="action-btn" style="padding:6px 12px;" onclick="changeMonth(1)">Sig. <i class="ti ti-chevron-right"></i></button>
+      </div>
+    </div>
+    
+    <div class="calendar-grid" style="display:grid; grid-template-columns: repeat(7, 1fr); gap:6px; margin-bottom:30px; background:#181818; padding:12px; border-radius:8px; border:1px solid #2d2d2d;">
+      ${["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"].map(d => `<div style="text-align:center; font-weight:bold; color:#888; font-size:12px; padding-bottom:6px;">${d}</div>`).join('')}
+  `;
+
+  const firstDay = new Date(year, month, 1).getDay();
+  const totalDays = new Date(year, month + 1, 0).getDate();
+
+  // Rellenar espacios vacíos del mes anterior
+  for (let i = 0; i < firstDay; i++) {
+    html += `<div style="background:rgba(255,255,255,0.005); border-radius:4px; min-height:75px;"></div>`;
+  }
+
+  const hoy = new Date();
+  hoy.setHours(0,0,0,0);
+
+  // Generar día por día
+  for (let day = 1; day <= totalDays; day++) {
+    const fechaCelda = new Date(year, month, day);
+    const esHoy = hoy.getDate() === day && hoy.getMonth() === month && hoy.getFullYear() === year;
+    
+    // Buscar qué créditos vencen justamente en este día
+    const deudasDia = credits.filter(c => {
+      const v = venc(c);
+      if (!v) return false;
+      const vDate = new Date(v);
+      return vDate.getDate() === day && vDate.getMonth() === month && vDate.getFullYear() === year;
+    });
+
+    let dayBG = esHoy ? 'rgba(66, 133, 244, 0.12)' : 'rgba(255,255,255,0.02)';
+    let border = esHoy ? '1px solid #4285f4' : '1px solid #252525';
+    
+    html += `
+      <div style="padding:6px; background:${dayBG}; border:${border}; border-radius:4px; min-height:75px; display:flex; flex-direction:column; justify-content:space-between; box-sizing:border-box;">
+        <span style="font-weight:bold; font-size:12px; color:${esHoy ? '#4285f4' : '#888'};">${day}</span>
+        <div style="display:flex; flex-direction:column; gap:3px; margin-top:4px; overflow-y:auto; max-height:50px;">
+          ${deudasDia.map(c => {
+            // Color del indicador: Verde si está pagado, Rojo si venció y no se pagó, Naranja si está pendiente
+            let badgeColor = c.estado === 'Pagado' ? '#4caf50' : (venc(c) < hoy ? '#f44336' : '#ff9800');
+            const pendiente = c.monto - (c.pagado || 0);
+            return `<div title="${c.proyecto} (${c.acreedor}) - Pendiente: S/ ${pendiente}" style="font-size:9px; background:${badgeColor}15; color:${badgeColor}; padding:1px 3px; border-radius:3px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; border-left:2px solid ${badgeColor}; font-weight:500;">
+              ${c.acreedor}: S/ ${pendiente.toFixed(0)}
+            </div>`;
+          }).join('')}
+        </div>
+      </div>
+    `;
+  }
+
+  html += `</div>`;
+
+  // --- SECCIÓN INFERIOR: TIMELINE DE PRÓXIMOS PAGOS ---
+  html += `<h3 style="margin-top:20px; margin-bottom:12px;">🔔 Cronograma de Pagos Pendientes</h3>`;
+  
+  const proximos = credits
+    .filter(c => c.estado !== 'Pagado')
+    .sort((a, b) => {
+      const va = venc(a) ? new Date(venc(a)) : new Date(8640000000000000);
+      const vb = venc(b) ? new Date(venc(b)) : new Date(8640000000000000);
+      return va - vb;
+    });
+
+  if (proximos.length === 0) {
+    html += `<p style="color:#666; font-style:italic; font-size:13px;">No registras ningún pago pendiente en este momento.</p>`;
+  } else {
+    html += `<div style="display:flex; flex-direction:column; gap:8px;">`;
+    proximos.forEach(c => {
+      const v = venc(c);
+      if (!v) return;
+      const vDate = new Date(v);
+      vDate.setHours(0,0,0,0);
+      
+      const diffTime = vDate - hoy;
+      const diasRestantes = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+      
+      let badgeTxt = '';
+      let borderLeftColor = '#ff9800';
+      if (diasRestantes < 0) {
+        badgeTxt = `⚠️ VENCIDO HACE ${Math.abs(diasRestantes)} DÍAS`;
+        borderLeftColor = '#f44336';
+      } else if (diasRestantes === 0) {
+        badgeTxt = `🚨 VENCE HOY`;
+        borderLeftColor = '#4285f4';
+      } else {
+        badgeTxt = `Faltan ${diasRestantes} días`;
+      }
+
+      const pendiente = c.monto - (c.pagado || 0);
+
+      html += `
+        <div style="display:flex; justify-content:space-between; align-items:center; background:#1e1e1e; padding:10px 14px; border-radius:6px; border-left:4px solid ${borderLeftColor}; border-top:1px solid #2d2d2d; border-right:1px solid #2d2d2d; border-bottom:1px solid #2d2d2d;">
+          <div>
+            <span style="font-weight:bold; font-size:14px; color:#fff;">${c.proyecto}</span> 
+            <span style="color:#888; font-size:13px;">• ${c.acreedor}</span>
+            <div style="font-size:11px; color:#aaa; margin-top:3px;">📅 Vence: ${new Date(v).toLocaleDateString('es-PE')}</div>
+          </div>
+          <div style="text-align:right;">
+            <div style="color:#fff; font-weight:bold; font-size:14px;">S/ ${pendiente.toLocaleString('es-PE', {minimumFractionDigits: 2})}</div>
+            <span style="font-size:10px; font-weight:bold; color:${borderLeftColor}; letter-spacing:0.5px; text-transform:uppercase;">${badgeTxt}</span>
+          </div>
+        </div>
+      `;
+    });
+    html += `</div>`;
+  }
+
+  container.innerHTML = html;
 }
 
+// Función auxiliar para navegar entre meses
+function changeMonth(dir) {
+  if (!window.currentCalDate) window.currentCalDate = new Date();
+  window.currentCalDate.setMonth(window.currentCalDate.getMonth() + dir);
+  renderReminders();
+}
 // ---- GESTIONAR ----
 function renderGestionar(){
   const el=document.getElementById('acreedor-mgr-list');
