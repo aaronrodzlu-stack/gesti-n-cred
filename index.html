@@ -690,6 +690,7 @@ function creditCard(c){
     <div class="action-row" style="margin-top:10px;">
       <button class="action-btn" onclick="markPaid(${c.id})"><i class="ti ti-check"></i> Pagado</button>
       <button class="action-btn" onclick="cycleStatus(${c.id})"><i class="ti ti-refresh"></i> Estado</button>
+      <button class="action-btn" onclick="addToCalendar(${c.id})"><i class="ti ti-calendar"></i> Agendar</button>
       <button class="action-btn del-btn" onclick="deleteCredit(${c.id})"><i class="ti ti-trash"></i> Eliminar</button>
     </div>
   </div>`;
@@ -866,7 +867,23 @@ function refresh(){
   else if(id==='acreedor'&&currentAcreedor)renderAcreedor(currentAcreedor);
   else if(id==='gestionar')renderGestionar();
 }
+function addToCalendar(id) {
+  const c = credits.find(x => x.id === id);
+  if (!c) return;
+  const v = venc(c);
+  if (!v) { alert('Este crédito ya está pagado o no tiene vencimiento.'); return; }
 
+  const d1 = v.toISOString().replace(/-|:|\.\d+/g, '').substring(0,8);
+  const nextDay = new Date(v);
+  nextDay.setDate(nextDay.getDate() + 1);
+  const d2 = nextDay.toISOString().replace(/-|:|\.\d+/g, '').substring(0,8);
+
+  const titulo = encodeURIComponent(`Vencimiento: ${c.proyecto} (${c.acreedor})`);
+  const detalles = encodeURIComponent(`Acreedor: ${c.acreedor}\nMonto Total: ${c.monto}\nPendiente: ${c.monto - c.pagado}\nNotas: ${c.notas}`);
+
+  const url = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${titulo}&dates=${d1}/${d2}&details=${detalles}`;
+  window.open(url, '_blank');
+}
 function addCredit(){
   const g=id=>document.getElementById(id).value;
   const proyecto=g('f-proyecto').trim();
