@@ -223,7 +223,15 @@ textarea{resize:vertical;min-height:56px;}
         <div class="form-group"><label>Monto del crédito (S/)</label><input type="number" id="f-monto" placeholder="0.00"></div>
         <div class="form-group"><label>Monto pagado (S/)</label><input type="number" id="f-pagado" placeholder="0.00" value="0"></div>
         <div class="form-group"><label>Fecha del crédito</label><input type="date" id="f-fecha"></div>
-        <div class="form-group"><label>Plazo (meses)</label><input type="number" id="f-plazo" placeholder="Ej. 24"></div>
+        <div class="form-group"><label>Plazo</label>
+          <div style="display:flex;gap:8px;">
+            <input type="number" id="f-plazo" placeholder="Ej. 24" style="flex:1;">
+            <select id="f-plazo-tipo" style="max-width:100px;">
+              <option value="meses">Meses</option>
+              <option value="dias">Días</option>
+              </select>
+          </div>
+        </div>
         <div class="form-group"><label>Tasa de interés (%)</label><input type="number" id="f-tasa" placeholder="Ej. 8.5" step="0.01"></div>
         <div class="form-group"><label>Estado</label>
           <select id="f-estado">
@@ -452,7 +460,16 @@ let currentAcreedor=null;
 let addReturnTo=null;
 let acFilter='all';
 
-function venc(c){if(c.estado==='Pagado')return null;return addMonths(new Date(c.fecha+'T00:00:00'),c.plazo);}
+function venc(c){
+  if(c.estado==='Pagado') return null;
+  const d = new Date(c.fecha+'T00:00:00');
+  if(c.plazo_tipo === 'dias') {
+    d.setDate(d.getDate() + c.plazo); // Suma días
+  } else {
+    d.setMonth(d.getMonth() + c.plazo); // Suma meses (por defecto)
+  }
+  return d;
+}
 function pct(c){return c.monto>0?Math.min(100,Math.round(c.pagado/c.monto*100)):0;}
 function sClass(s){return s==='Activo'?'badge-active':s==='Pagado'?'badge-paid':s==='Vencido'?'badge-overdue':'badge-pending';}
 function pCol(p){return p>=100?'#378ADD':p>=50?'#639922':'#BA7517';}
@@ -662,7 +679,7 @@ function creditCard(c){
       <div><div class="fl">Pendiente</div><div class="fv">${fmt(c.monto-c.pagado)}</div></div>
       <div><div class="fl">Fecha crédito</div><div class="fv">${fmtDate(c.fecha)}</div></div>
       <div><div class="fl">Vencimiento</div><div class="fv">${v?fmtDate(v):'—'}${dLabel}</div></div>
-      <div><div class="fl">Plazo</div><div class="fv">${c.plazo} meses</div></div>
+      <div><div class="fl">Plazo</div><div class="fv">${c.plazo} ${c.plazo_tipo === 'dias' ? 'días' : 'meses'}</div></div>
       <div><div class="fl">Tasa</div><div class="fv">${c.tasa>0?c.tasa+'%':'Sin interés'}</div></div>
     </div>
     <div style="margin-top:8px;">
@@ -864,12 +881,14 @@ function addCredit(){
     pagado:parseFloat(g('f-pagado'))||0,
     fecha:g('f-fecha')||new Date().toISOString().slice(0,10),
     plazo:parseInt(g('f-plazo'))||12,
+    plazo_tipo:g('f-plazo-tipo')||'meses',
     tasa:parseFloat(g('f-tasa'))||0,
     estado:g('f-estado'),tipo:g('f-tipo'),
     alerta:parseInt(g('f-alerta'))||15,
     notas:g('f-notas').trim()
   });
   ['f-proyecto','f-monto','f-pagado','f-fecha','f-plazo','f-tasa','f-notas'].forEach(id=>document.getElementById(id).value='');
+  document.getElementById('f-plazo-tipo').value = 'meses';
   saveData();
   renderSidebar();showAcreedor(acreedor);
 }
